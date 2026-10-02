@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -50,6 +51,16 @@ public class UserController {
         User caller = authService.requireUser(token);
         UserResponse updated = userService.update(id, req, caller);
         return ResponseEntity.ok(updated);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @CookieValue(value = "session", required = false) String token,
+            @PathVariable Long id
+    ) {
+        User caller = authService.requireUser(token);
+        userService.delete(id, caller);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping

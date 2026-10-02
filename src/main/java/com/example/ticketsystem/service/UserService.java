@@ -183,6 +183,26 @@ public class UserService {
         }
     }
 
+    public void delete(Long targetId, User caller) {
+        User user = userRepository.findById(targetId)
+            .orElseThrow(() -> new NotFoundException("User not found"));
+        String callerRole = caller.getRole();
+        boolean callerIsAdmin = "admin".equals(callerRole);
+        boolean callerIsSuperAdmin = "superadmin".equals(callerRole);
+        boolean callerIsSelf = targetId.equals(caller.getId());
+        if (callerIsSuperAdmin) {
+            userRepository.delete(user);
+        } else if (callerIsAdmin) {
+            if (callerIsSelf || !user.getRole().equals("user")) {
+                throw new ForbiddenException("Forbidden");
+            } else {
+                userRepository.delete(user);
+            }
+        } else {
+            throw new ForbiddenException("Forbidden");
+        }
+    }
+
     public List<UserResponse> listAll() {
         return userRepository.findAllByOrderByNameAsc()
             .stream()
