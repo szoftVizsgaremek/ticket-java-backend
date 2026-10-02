@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,7 +14,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.ticketsystem.dto.request.CreateUserRequest;
+import com.example.ticketsystem.dto.request.UpdateUserRequest;
 import com.example.ticketsystem.dto.response.UserResponse;
+import com.example.ticketsystem.model.User;
 import com.example.ticketsystem.service.AuthService;
 import com.example.ticketsystem.service.UserService;
 
@@ -33,9 +36,20 @@ public class UserController {
     public ResponseEntity<UserResponse> create(
             @CookieValue(value= "session", required = false) String token,
             @RequestBody CreateUserRequest req) {
-        authService.requireAdmin(token);
-        UserResponse created = userService.create(req);
+        User user = authService.requireAdmin(token);
+        UserResponse created = userService.create(req, user);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<UserResponse> update(
+            @CookieValue(value = "session", required = false) String token,
+            @PathVariable Long id,
+            @RequestBody UpdateUserRequest req
+    ) {
+        User caller = authService.requireUser(token);
+        UserResponse updated = userService.update(id, req, caller);
+        return ResponseEntity.ok(updated);
     }
 
     @GetMapping
@@ -56,5 +70,4 @@ public class UserController {
             ResponseEntity.ok(currentUser) :  
             ResponseEntity.ok(userService.getById(Long.valueOf(id)));
     }
-    
 }

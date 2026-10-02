@@ -26,17 +26,20 @@ public class User {
     private LocalDate birthDate;
     @Column(nullable = false)
     private String role = "user";
+    @Column(nullable = false)
+    private String jobTitle;
     @Column(nullable = false, unique = true)
     private String email;
     
     public User() {}
 
-    public User(String name, String username, String hash, LocalDate birth_date, String role, String email) {
+    public User(String name, String username, String hash, LocalDate birth_date, String role, String jobTitle, String email) {
         this.name = name;
         this.username = username;
         this.hash = hash;
         this.birthDate = birth_date;
         this.role = role;
+        this.jobTitle = jobTitle;
         this.email = email;
     }
 
@@ -88,6 +91,14 @@ public class User {
         this.role = role;
     }
 
+    public String getJobTitle() {
+        return jobTitle;
+    }
+
+    public void setJobTitle(String jobTitle) {
+        this.jobTitle = jobTitle;
+    }
+
     public String getEmail() {
         return email;
     }
@@ -95,6 +106,4 @@ public class User {
     public void setEmail(String email) {
         this.email = email;
     }
-
-    
 }

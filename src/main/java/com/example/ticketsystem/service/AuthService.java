@@ -1,6 +1,7 @@
 package com.example.ticketsystem.service;
 
 import java.util.Optional;
+import java.util.Set;
 
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,8 @@ public class AuthService {
 
     public record LoginResult(String token, UserResponse user) {}
     
+    private static final Set<String> ADMIN_OR_ABOVE = Set.of("admin", "superadmin");
+
     private final UserRepository userRepository;
     private final UserService userService;
     private final SessionStore sessionStore;
@@ -44,7 +47,14 @@ public class AuthService {
 
     public User requireAdmin(String token) {
         User user = requireUser(token);
-        if (!"admin".equals(user.getRole())) {
+        if (!ADMIN_OR_ABOVE.contains(user.getRole())) {
+            throw new ForbiddenException("Forbidden");
+        }
+        return user;
+    }
+    public User requireSuperAdmin(String token) {
+        User user = requireUser(token);
+        if (!"superadmin".equals(user.getRole())) {
             throw new ForbiddenException("Forbidden");
         }
         return user;

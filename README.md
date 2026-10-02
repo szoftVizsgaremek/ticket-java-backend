@@ -1,3 +1,5 @@
+## /src/main/resources/application-dev.properties
+
 Database - localhost:3306/ticketsystem (Mariadb)
 
 Default database user - ticketadmin
@@ -14,20 +16,20 @@ Windows:
 
     CMD
 
-    - mvnw.cmd clean install
+    mvnw.cmd clean install
 
-    - mvnw.cmd spring-boot:run
+    mvnw.cmd spring-boot:run
 
     PS
 
-    - .\mvnw.cmd clean install
+    .\mvnw.cmd clean install
 
-    - .\mvnw.cmd spring-boot:run
+    .\mvnw.cmd spring-boot:run
 
 Linux:
 
     Bash
 
-    - ./mvnw clean install
+    ./mvnw clean install
 
-    - ./mvnw spring-boot:run
+    ./mvnw spring-boot:run
