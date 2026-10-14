@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import com.example.ticketsystem.dto.request.CreateUserRequest;
 import com.example.ticketsystem.dto.request.UpdateUserRequest;
 import com.example.ticketsystem.dto.response.UserResponse;
+import com.example.ticketsystem.dto.response.UserSummary;
 import com.example.ticketsystem.exception.BadRequestException;
 import com.example.ticketsystem.exception.ConflictException;
 import com.example.ticketsystem.exception.ForbiddenException;
@@ -43,6 +44,14 @@ public class UserService {
         );
     }
 
+    public UserSummary toSummary(User user) {
+        return new UserSummary(
+            user.getId(),
+            user.getName(),
+            user.getUsername(),
+            user.getJobTitle()
+        );
+    }
 
     public UserResponse create(CreateUserRequest req, User caller) {
         if (

@@ -36,7 +36,8 @@ public class UserController {
     @PostMapping
     public ResponseEntity<UserResponse> create(
             @CookieValue(value= "session", required = false) String token,
-            @RequestBody CreateUserRequest req) {
+            @RequestBody CreateUserRequest req
+        ) {
         User user = authService.requireAdmin(token);
         UserResponse created = userService.create(req, user);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
@@ -74,11 +75,12 @@ public class UserController {
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getById(
             @CookieValue(value = "session", required = false) String token,
-            @PathVariable String id) {
+            @PathVariable Long id
+        ) {
         UserResponse currentUser = authService.resolveUser(token);
         
         return "me".equals(id) ?
             ResponseEntity.ok(currentUser) :  
-            ResponseEntity.ok(userService.getById(Long.valueOf(id)));
+            ResponseEntity.ok(userService.getById(id));
     }
 }
