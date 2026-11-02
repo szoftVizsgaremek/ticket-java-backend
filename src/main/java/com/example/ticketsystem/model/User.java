@@ -1,6 +1,9 @@
 package com.example.ticketsystem.model;
 
+import java.time.Instant;
 import java.time.LocalDate;
+
+import org.hibernate.annotations.CreationTimestamp;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,28 +19,36 @@ public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String name;
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 50)
     private String username;
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String hash;
-    @Column(nullable = false, name = "birth_date")
+    @Column(nullable = false)
     private LocalDate birthDate;
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private String role = "user";
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String jobTitle;
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
+    private boolean active = true;
+    @Column
+    private Instant passwordChangedAt;
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
+    private Instant createdAt;
+    @Column(nullable = false, unique = true, length = 255)
     private String email;
     
-    public User() {}
+    public User() {}    
 
-    public User(String name, String username, String hash, LocalDate birth_date, String role, String jobTitle, String email) {
+    public User(String name, String username, String hash, LocalDate birthDate, String role, String jobTitle,
+            String email) {
         this.name = name;
         this.username = username;
         this.hash = hash;
-        this.birthDate = birth_date;
+        this.birthDate = birthDate;
         this.role = role;
         this.jobTitle = jobTitle;
         this.email = email;
@@ -45,10 +56,6 @@ public class User {
 
     public Long getId() {
         return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
     }
 
     public String getName() {
@@ -97,6 +104,26 @@ public class User {
 
     public void setJobTitle(String jobTitle) {
         this.jobTitle = jobTitle;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
+    public Instant getPasswordChangedAt() {
+        return passwordChangedAt;
+    }
+
+    public void setPasswordChangedAt(Instant passwordChangedAt) {
+        this.passwordChangedAt = passwordChangedAt;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 
     public String getEmail() {
