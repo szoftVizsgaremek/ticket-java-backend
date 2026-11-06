@@ -4,5 +4,6 @@ public record UserSummary(
     Long id,
     String name,
     String username, 
-    String jobTitle
+    String jobTitle,
+    boolean active
 ) {}

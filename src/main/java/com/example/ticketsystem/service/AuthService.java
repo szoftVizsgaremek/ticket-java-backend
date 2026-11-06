@@ -41,7 +41,7 @@ public class AuthService {
         }
         User user = userRepository.findById(id)
             .orElseThrow( () -> new UnauthorizedException("Not authenticated"));
-
+            
         return user;
     }
 
@@ -62,6 +62,9 @@ public class AuthService {
 
     public UserResponse resolveUser(String token) {
         User user = requireUser(token);
+        if(!user.isActive()) {
+            throw new UnauthorizedException("Not authenticated");
+        }
         return userService.toResponse((user));
     }
 
@@ -71,6 +74,9 @@ public class AuthService {
             throw new UnauthorizedException("Invalid username or password");
         }
         User user = userOptional.get();
+        if(!user.isActive()){
+            throw new UnauthorizedException("Invalid username or password");
+        }
         String safePassword = password == null ? "" : password;
         if(safePassword.isEmpty() || !BCrypt.checkpw(safePassword, user.getHash())) {
             throw new UnauthorizedException("Invalid username or password");

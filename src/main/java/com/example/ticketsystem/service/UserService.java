@@ -6,6 +6,7 @@ import java.util.Set;
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.ticketsystem.dto.request.CreateUserRequest;
 import com.example.ticketsystem.dto.request.UpdateUserRequest;
@@ -19,6 +20,7 @@ import com.example.ticketsystem.model.User;
 import com.example.ticketsystem.repository.UserRepository;
 
 @Service 
+@Transactional (readOnly = true)
 public class UserService {
 
     private static final String PASSWORD_PATTERN =
@@ -40,6 +42,7 @@ public class UserService {
             user.getBirthDate(),
             user.getRole(),
             user.getJobTitle(),
+            user.isActive(),
             user.getEmail()
         );
     }
@@ -49,10 +52,12 @@ public class UserService {
             user.getId(),
             user.getName(),
             user.getUsername(),
-            user.getJobTitle()
+            user.getJobTitle(),
+            user.isActive()
         );
     }
 
+    @Transactional 
     public UserResponse create(CreateUserRequest req, User caller) {
         if (
                 req.name() == null || req.name().isBlank() ||
@@ -100,9 +105,13 @@ public class UserService {
         }
     }
 
+    @Transactional 
     public UserResponse update(Long targetId, UpdateUserRequest req, User caller) {
         User user = userRepository.findById(targetId)
             .orElseThrow(() -> new NotFoundException("User not found"));
+        if(!user.isActive()) {
+            throw new NotFoundException("User not found");
+        }
         String callerRole = caller.getRole();
         String hash = user.getHash();
         boolean callerIsAdmin = "admin".equals(callerRole);
@@ -192,28 +201,51 @@ public class UserService {
         }
     }
 
+    @Transactional 
     public void delete(Long targetId, User caller) {
         User user = userRepository.findById(targetId)
             .orElseThrow(() -> new NotFoundException("User not found"));
+        if(!user.isActive()) {
+            throw new NotFoundException("User not found");
+        }
+        String callerRole = caller.getRole();
+        boolean callerIsSuperAdmin = "superadmin".equals(callerRole);
+        if (callerIsSuperAdmin) {
+            userRepository.delete(user);
+        } else {
+            throw new ForbiddenException("Forbidden");
+        }
+    }
+
+    @Transactional 
+    public void deactivate(Long targetId, User caller) {
+        User user = userRepository.findById(targetId)
+            .orElseThrow(() -> new NotFoundException("User not found"));
+        if(!user.isActive()) {
+            throw new NotFoundException("User not found");
+        }
         String callerRole = caller.getRole();
         boolean callerIsAdmin = "admin".equals(callerRole);
         boolean callerIsSuperAdmin = "superadmin".equals(callerRole);
         boolean callerIsSelf = targetId.equals(caller.getId());
         if (callerIsSuperAdmin) {
-            userRepository.delete(user);
+            user.setActive(false);
+            userRepository.save(user);
         } else if (callerIsAdmin) {
             if (callerIsSelf || !user.getRole().equals("user")) {
                 throw new ForbiddenException("Forbidden");
             } else {
-                userRepository.delete(user);
+                user.setActive(false);
+                userRepository.save(user);
             }
         } else {
             throw new ForbiddenException("Forbidden");
         }
     }
 
+
     public List<UserResponse> listAll() {
-        return userRepository.findAllByOrderByNameAsc()
+        return userRepository.findAllByActiveTrueOrderByNameAsc()
             .stream()
             .map(user -> toResponse(user))
             .toList();
@@ -222,7 +254,6 @@ public class UserService {
     public UserResponse getById(Long id) {
         User user = userRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("User not found"));
-        
         return toResponse(user);
     }
 }

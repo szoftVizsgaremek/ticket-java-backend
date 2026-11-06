@@ -64,6 +64,16 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}}")
+    public ResponseEntity<Void> deactivate(
+            @CookieValue(value = "session", required = false) String token,
+            @PathVariable Long id
+    ) {
+        User caller = authService.requireUser(token);
+        userService.deactivate(id, caller);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping
     public ResponseEntity<List<UserResponse>> list(
             @CookieValue(value= "session", required = false) String token

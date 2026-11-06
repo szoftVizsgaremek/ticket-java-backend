@@ -8,5 +8,6 @@ public record UserResponse(
     String username, 
     LocalDate birthDate, 
     String role, 
-    String jobTitle, 
+    String jobTitle,
+    boolean active,
     String email) {}

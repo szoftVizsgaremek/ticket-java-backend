@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.ticketsystem.dto.request.CreateTicketRequest;
 import com.example.ticketsystem.dto.request.UpdateTicketRequest;
@@ -16,16 +17,19 @@ import com.example.ticketsystem.model.User;
 import com.example.ticketsystem.repository.TicketRepository;
 import com.example.ticketsystem.repository.UserRepository;
 
-@Service 
+
+
+@Service
+@Transactional (readOnly = true)
 public class TicketService {
     
     private final TicketRepository ticketRepository;
     private final UserRepository userRepository;
     private final UserService userService;
 
-    private final Set<String> VALID_TYPES = Set.of("thermal", "software", "hardware");
-    private final Set<String> VALID_PRIORITIES = Set.of("low", "moderate", "high", "critical");
-    private final Set<String> VALID_STATUSES = Set.of("open", "in_progress", "closed");
+    private static final Set<String> VALID_TYPES = Set.of("thermal", "software", "hardware");
+    private static final Set<String> VALID_PRIORITIES = Set.of("low", "moderate", "high", "critical");
+    private static final Set<String> VALID_STATUSES = Set.of("open", "in_progress", "closed");
 
     public TicketService(TicketRepository ticketRepository, UserRepository userRepository, UserService userService) {
         this.ticketRepository = ticketRepository;
@@ -34,10 +38,8 @@ public class TicketService {
     }
 
     public TicketResponse toResponse(Ticket ticket) {
-        User uploader = userRepository.findById(ticket.getUploadedBy())
-            .orElseThrow(() -> new IllegalStateException("Ticket references a non-existent user"));
-        User assignee = userRepository.findById(ticket.getAssigneeId())
-            .orElseThrow(() -> new IllegalStateException("Ticket references a non-existent user"));
+        User uploader = ticket.getUploader();
+        User assignee = ticket.getAssignee();
         return new TicketResponse(
             ticket.getId(),
             ticket.getName(),
@@ -52,6 +54,16 @@ public class TicketService {
         );
     }
 
+    private User requireActiveAssignee(Long id) {
+        User assignee = userRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException("Invalid assignee"));
+        if (!assignee.isActive()) {
+            throw new BadRequestException("Invalid assignee");
+        }
+        return assignee;
+    }
+
+    @Transactional 
     public TicketResponse create(CreateTicketRequest req, User caller) {
         if (
                 req.name() == null || req.name().isBlank() ||
@@ -73,33 +85,29 @@ public class TicketService {
             throw new BadRequestException("Must be a valid priority label");
         }
 
-        User assignee = userRepository.findById(req.assigneeId())
-            .orElseThrow(() -> new BadRequestException("Assignee is a non-existent user"));
+        User assignee = requireActiveAssignee(req.assigneeId());
+
         Ticket ticket = new Ticket(
             req.name(),
             req.description(),
             "open",
             priority,
             type,
-            caller.getId(),
-            assignee.getId()
+            caller,
+            assignee
         );
 
         Ticket saved = ticketRepository.save(ticket);
         return toResponse(saved);
     }
 
+    @Transactional 
     public TicketResponse update(Long targetId, UpdateTicketRequest req, User caller) {
         Ticket ticket = ticketRepository.findById(targetId)
             .orElseThrow(() -> new NotFoundException("Ticket not found"));
         
-        Long uploaderId = ticket.getUploadedBy();
-        User uploader = userRepository.findById(uploaderId)
-            .orElseThrow(() -> new IllegalStateException("User not found"));
-        
-        Long currentAssigneeId = ticket.getAssigneeId();
-        User currentAssignee = userRepository.findById(currentAssigneeId)
-            .orElseThrow(() -> new IllegalStateException("User not found"));
+        User uploader = ticket.getUploader();
+        User currentAssignee = ticket.getAssignee();
             
         String callerJobTitle = caller.getJobTitle();
         String uploaderJobTitle = uploader.getJobTitle();
@@ -128,9 +136,8 @@ public class TicketService {
             }
         }
         if (req.assigneeId() != null) {
-            User newAssignee = userRepository.findById(req.assigneeId())
-                .orElseThrow(() -> new BadRequestException("User doesn't exist"));
-            ticket.setAssigneeId(newAssignee.getId());
+            User newAssignee = requireActiveAssignee(req.assigneeId());
+            ticket.setAssignee(newAssignee);
         }
         if (req.type() != null) {
             if (VALID_TYPES.contains(req.type())) {
@@ -150,8 +157,6 @@ public class TicketService {
         return toResponse(ticket);
     }
 
-    
-
     public List<TicketResponse> listAll() {
         return ticketRepository.findAllByOrderByCreatedAtDesc()
             .stream()
@@ -160,14 +165,14 @@ public class TicketService {
     }
 
     public List<TicketResponse> listOpenedBy(Long id) {
-        return ticketRepository.findByUploadedBy(id)
+        return ticketRepository.findByUploaderIdOrderByCreatedAtDesc(id)
             .stream()
             .map(ticket -> toResponse(ticket))
             .toList();
     }
 
     public List<TicketResponse> listAssignedTo(Long id) {
-        return ticketRepository.findByAssigneeId(id)
+        return ticketRepository.findByAssigneeIdOrderByCreatedAtDesc(id)
             .stream()
             .map(ticket -> toResponse(ticket))
             .toList();
