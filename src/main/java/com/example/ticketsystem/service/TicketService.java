@@ -147,7 +147,7 @@ public class TicketService {
             }
         }
 
-        Ticket saved = ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.saveAndFlush(ticket);
         return toResponse(saved);
     }
 

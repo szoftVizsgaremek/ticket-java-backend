@@ -55,16 +55,6 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(
-            @CookieValue(value = "session", required = false) String token,
-            @PathVariable Long id
-    ) {
-        User caller = authService.requireUser(token);
-        userService.delete(id, caller);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PatchMapping("/{id}}")
     public ResponseEntity<Void> deactivate(
             @CookieValue(value = "session", required = false) String token,
             @PathVariable Long id

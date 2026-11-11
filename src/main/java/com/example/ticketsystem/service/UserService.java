@@ -202,22 +202,6 @@ public class UserService {
     }
 
     @Transactional 
-    public void delete(Long targetId, User caller) {
-        User user = userRepository.findById(targetId)
-            .orElseThrow(() -> new NotFoundException("User not found"));
-        if(!user.isActive()) {
-            throw new NotFoundException("User not found");
-        }
-        String callerRole = caller.getRole();
-        boolean callerIsSuperAdmin = "superadmin".equals(callerRole);
-        if (callerIsSuperAdmin) {
-            userRepository.delete(user);
-        } else {
-            throw new ForbiddenException("Forbidden");
-        }
-    }
-
-    @Transactional 
     public void deactivate(Long targetId, User caller) {
         User user = userRepository.findById(targetId)
             .orElseThrow(() -> new NotFoundException("User not found"));
