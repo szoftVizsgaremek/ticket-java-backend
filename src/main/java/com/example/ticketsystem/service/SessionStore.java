@@ -27,4 +27,8 @@ public class SessionStore {
             sessions.remove(token);
         }
     }
+
+    public void invalidateAllForUser(Long userId) {
+        sessions.values().removeIf(id -> id.equals(userId));
+    }
 }

@@ -1,5 +1,7 @@
 package com.example.ticketsystem.service;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
@@ -16,6 +18,7 @@ import com.example.ticketsystem.exception.BadRequestException;
 import com.example.ticketsystem.exception.ConflictException;
 import com.example.ticketsystem.exception.ForbiddenException;
 import com.example.ticketsystem.exception.NotFoundException;
+import com.example.ticketsystem.model.AuditAction;
 import com.example.ticketsystem.model.User;
 import com.example.ticketsystem.repository.UserRepository;
 
@@ -27,11 +30,16 @@ public class UserService {
         "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9]).{6,}$";
 
     private static final Set<String> VALID_ROLES = Set.of("user", "admin", "superadmin");
-    
-    private final UserRepository userRepository;
+    private static final Set<String> ADMIN_OR_ABOVE = Set.of("admin", "superadmin");
 
-    public UserService(UserRepository userRepository) {
+    private final UserRepository userRepository;
+    private final AuditService auditService;
+    private final SessionStore sessionStore;
+
+    public UserService(UserRepository userRepository, AuditService auditService, SessionStore sessionStore) {
         this.userRepository = userRepository;
+        this.auditService = auditService;
+        this.sessionStore = sessionStore;
     }
 
     public UserResponse toResponse(User user) {
@@ -57,6 +65,49 @@ public class UserService {
         );
     }
 
+    private String requireText(String value, int max, String label) {
+        String trimmed = value.strip();
+        if (trimmed.isEmpty() || trimmed.length() > max) {
+            throw new BadRequestException(label + " must be 1-" + max + " characters");
+        }
+        return trimmed;
+    }
+
+    private void applyProfile(User user, UpdateUserRequest req) {
+        if (req.name() != null) {
+            user.setName(requireText(req.name(), 100, "Name"));
+        }
+        if (req.email() != null) {
+            user.setEmail(requireText(req.email(), 255, "Email"));
+        }
+        if (req.jobTitle() != null) {
+            user.setJobTitle(requireText(req.jobTitle(), 100, "Job title"));
+        }
+        if (req.birthDate() != null) {
+            user.setBirthDate(req.birthDate());
+        }
+    }
+
+    private void applyPassword(User user, String newPassword) {
+        if (newPassword.matches(PASSWORD_PATTERN)) {
+            if(BCrypt.checkpw(newPassword, user.getHash())) {
+                throw new BadRequestException("New password can't match previous password");
+            }
+            String hash = BCrypt.hashpw(newPassword, BCrypt.gensalt(12));
+            user.setHash(hash);
+            user.setPasswordChangedAt(Instant.now());
+        } else {
+            throw new BadRequestException("Password doesn't fulfill requirements");
+        }
+    }
+
+    private String hashPassword(String raw) {
+        if (!raw.matches(PASSWORD_PATTERN) || raw.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new BadRequestException("Password doesn't fulfill requirements");
+        }         
+        return BCrypt.hashpw(raw, BCrypt.gensalt());
+    }
+
     @Transactional 
     public UserResponse create(CreateUserRequest req, User caller) {
         if (
@@ -70,10 +121,6 @@ public class UserService {
             throw new BadRequestException("Missing required fields");
         }
 
-        if (!req.password().matches(PASSWORD_PATTERN)) {
-            throw new BadRequestException("Password must fulfill requirements");
-        }
-
         boolean callerIsSuperAdmin = "superadmin".equals(caller.getRole());
         String role = (req.role() == null) ? "user" : req.role();
 
@@ -85,16 +132,14 @@ public class UserService {
             throw new ForbiddenException("Forbidden");
         }
 
-        String hash = BCrypt.hashpw(req.password(), BCrypt.gensalt(12));
-
         User user = new User(
-            req.name(),
-            req.username(),
-            hash,
+            requireText(req.name(), 100, "Name"),
+            requireText(req.username(), 50, "Username"),
+            hashPassword(req.password()),
             req.birthDate(),
             role,
-            req.jobTitle(),
-            req.email()
+            requireText(req.jobTitle(), 100, "Job title"),
+            requireText(req.email(), 255, "Email")
         );
 
         try {
@@ -113,41 +158,36 @@ public class UserService {
             throw new NotFoundException("User not found");
         }
         String callerRole = caller.getRole();
-        String hash = user.getHash();
+        String targetRole = user.getRole();
         boolean callerIsAdmin = "admin".equals(callerRole);
         boolean callerIsSuperAdmin = "superadmin".equals(callerRole);
         boolean callerIsSelf = targetId.equals(caller.getId());
 
+        AuditAction passwordReset = null;
+        AuditAction passwordChanged = null;
+        AuditAction roleChanged = null;
+
         if(callerIsSuperAdmin) {
-            if (req.name() != null) {
-                user.setName(req.name());
-            }
-            if (req.email() != null) {
-                user.setEmail(req.email());
-            }
-            if (req.jobTitle() != null) {
-                user.setJobTitle(req.jobTitle());
-            }
-            if (req.birthDate() != null) {
-                user.setBirthDate(req.birthDate());
-            }
+            
+            applyProfile(user, req);
+
             if (req.password() != null) {
-                if (req.password().matches(PASSWORD_PATTERN)) {
-                    hash = BCrypt.hashpw(req.password(), BCrypt.gensalt(12));
-                    user.setHash(hash);
+                applyPassword(user, req.password());
+                if (callerIsSelf) {
+                    passwordChanged = AuditAction.PASSWORD_CHANGED;
                 } else {
-                    throw new BadRequestException("Password doesn't fulfill requirements");
+                    passwordReset = AuditAction.PASSWORD_RESET;
                 }
+                    
             }
             if (req.role() != null ) {
                 if (VALID_ROLES.contains(req.role())) {
                     user.setRole(req.role());
+                    roleChanged = AuditAction.ROLE_CHANGED;
                 } else {
                     throw new BadRequestException("Role doesn't exist");
                 }
             }
-            userRepository.save(user);
-            return toResponse(user);
         } else if (callerIsSelf) {
             if (
                     req.name() != null && !req.name().isBlank() ||
@@ -160,45 +200,45 @@ public class UserService {
             }
 
             if (req.password() != null) {
-                if (req.password().matches(PASSWORD_PATTERN)) {
-                    hash = BCrypt.hashpw(req.password(), BCrypt.gensalt(12));
-                    user.setHash(hash);
-                    userRepository.save(user);    
-                } else {
-                    throw new BadRequestException("Password doesn't fulfill requirements");
-                }
+                applyPassword(user, req.password());
+                passwordChanged = AuditAction.PASSWORD_CHANGED; 
             }
-            return toResponse(user);
             
         } else if(callerIsAdmin && user.getRole().equals("user")) {
             if (req.role() != null) {
                 throw new ForbiddenException("Forbidden");    
             }
-            if (req.name() != null) {
-                user.setName(req.name());
-            }
-            if (req.email() != null) {
-                user.setEmail(req.email());
-            }
-            if (req.jobTitle() != null) {
-                user.setJobTitle(req.jobTitle());
-            }
-            if (req.birthDate() != null) {
-                user.setBirthDate(req.birthDate());
-            }
+            
+            applyProfile(user, req);
+            
             if (req.password() != null) {
-                if (req.password().matches(PASSWORD_PATTERN)) {
-                    hash = BCrypt.hashpw(req.password(), BCrypt.gensalt(12));
-                    user.setHash(hash);
-                } else {
-                    throw new BadRequestException("Password doesn't fulfill requirements");
-                }
+                applyPassword(user, req.password());
+                passwordReset = AuditAction.PASSWORD_RESET;
             }
-            userRepository.save(user);
-            return toResponse(user);
         } else {
             throw new ForbiddenException("Forbidden");
         }
+
+        try {
+            userRepository.saveAndFlush(user);    
+        } catch (DataIntegrityViolationException e) {
+            throw new ConflictException("Email already exists");
+        }
+        
+        if (passwordChanged != null) {
+            auditService.log(caller, user, passwordChanged, null);
+        }
+
+        if (passwordReset != null) {
+            auditService.log(caller, user, passwordReset, null);
+            sessionStore.invalidateAllForUser(targetId);
+        }
+
+        if (roleChanged != null && !targetRole.equals(user.getRole())) {
+            String details = String.format("%s -> %s", targetRole, user.getRole());
+            auditService.log(caller, user, roleChanged, details);
+        }
+        return toResponse(user);
     }
 
     @Transactional 
@@ -210,23 +250,48 @@ public class UserService {
         }
         String callerRole = caller.getRole();
         boolean callerIsAdmin = "admin".equals(callerRole);
-        boolean callerIsSuperAdmin = "superadmin".equals(callerRole);
         boolean callerIsSelf = targetId.equals(caller.getId());
-        if (callerIsSuperAdmin) {
-            user.setActive(false);
-            userRepository.save(user);
-        } else if (callerIsAdmin) {
-            if (callerIsSelf || !user.getRole().equals("user")) {
-                throw new ForbiddenException("Forbidden");
-            } else {
-                user.setActive(false);
-                userRepository.save(user);
-            }
-        } else {
+        
+        if (!ADMIN_OR_ABOVE.contains(callerRole)) {
             throw new ForbiddenException("Forbidden");
         }
+        if (callerIsAdmin) {
+            if (callerIsSelf || !user.getRole().equals("user")) {
+                throw new ForbiddenException("Forbidden");
+            } 
+        }
+        user.setActive(false);
+        userRepository.save(user);
+        auditService.log(caller, user, AuditAction.USER_DEACTIVATED, null);
+        sessionStore.invalidateAllForUser(targetId);
     }
 
+    @Transactional 
+    public void reactivate(Long targetId, User caller) {
+        User user = userRepository.findById(targetId)
+            .orElseThrow(() -> new NotFoundException("User not found"));
+
+        if(user.isActive()) {
+            throw new ConflictException("User is already active");
+        }
+
+        String callerRole = caller.getRole();
+        boolean callerIsAdmin = "admin".equals(callerRole);
+        boolean callerIsSelf = targetId.equals(caller.getId());
+
+        if (!ADMIN_OR_ABOVE.contains(callerRole)) {
+            throw new ForbiddenException("Forbidden");
+        }
+        if (callerIsAdmin) {
+            if (callerIsSelf || !user.getRole().equals("user")) {
+                throw new ForbiddenException("Forbidden");
+            }
+        }
+
+        user.setActive(true);
+        userRepository.save(user);
+        auditService.log(caller, user, AuditAction.USER_REACTIVATED, null);
+    }
 
     public List<UserResponse> listAll() {
         return userRepository.findAllByActiveTrueOrderByNameAsc()

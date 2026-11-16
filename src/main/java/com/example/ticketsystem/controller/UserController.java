@@ -63,6 +63,16 @@ public class UserController {
         userService.deactivate(id, caller);
         return ResponseEntity.noContent().build();
     }
+    
+    @PostMapping("/{id}/reactivate")
+    public ResponseEntity<Void> reactivate(
+            @CookieValue(value = "session", required = false) String token,
+            @PathVariable Long id
+    ) {
+        User caller = authService.requireUser(token);
+        userService.reactivate(id, caller);
+        return ResponseEntity.noContent().build();
+    }
 
     @GetMapping
     public ResponseEntity<List<UserResponse>> list(
