@@ -6,9 +6,14 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.example.ticketsystem.exception.NotFoundException;
 import com.example.ticketsystem.model.Ticket;
 
 public interface TicketRepository extends JpaRepository<Ticket, Long>{
+
+    default Ticket findOrThrow(Long id) {
+        return findById(id).orElseThrow(() -> new NotFoundException("Ticket not found"));
+    }
     
     @EntityGraph(attributePaths = {"uploader", "assignee"})
     List<Ticket> findByAssigneeIdOrderByCreatedAtDesc(Long assigneeId);

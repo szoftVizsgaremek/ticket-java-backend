@@ -14,7 +14,6 @@ import com.example.ticketsystem.dto.response.UserSummary;
 import com.example.ticketsystem.exception.BadRequestException;
 import com.example.ticketsystem.exception.ConflictException;
 import com.example.ticketsystem.exception.ForbiddenException;
-import com.example.ticketsystem.exception.NotFoundException;
 import com.example.ticketsystem.model.AuditAction;
 import com.example.ticketsystem.model.Roles;
 import com.example.ticketsystem.model.User;
@@ -127,11 +126,7 @@ public class UserService {
 
     @Transactional 
     public UserResponse update(Long targetId, UpdateUserRequest req, User caller) {
-        User user = userRepository.findById(targetId)
-            .orElseThrow(() -> new NotFoundException("User not found"));
-        if(!user.isActive()) {
-            throw new NotFoundException("User not found");
-        }
+        User user = userRepository.findActiveOrThrow(targetId);
         String callerRole = caller.getRole();
         String targetRole = user.getRole();
         boolean callerIsSelf = targetId.equals(caller.getId());
@@ -216,11 +211,7 @@ public class UserService {
 
     @Transactional 
     public void deactivate(Long targetId, User caller) {
-        User user = userRepository.findById(targetId)
-            .orElseThrow(() -> new NotFoundException("User not found"));
-        if(!user.isActive()) {
-            throw new NotFoundException("User not found");
-        }
+        User user = userRepository.findActiveOrThrow(targetId);
         if (!UserPermissions.canManage(caller, user)) {
             throw new ForbiddenException("Forbidden");
         }
@@ -232,12 +223,7 @@ public class UserService {
 
     @Transactional 
     public void reactivate(Long targetId, User caller) {
-        User user = userRepository.findById(targetId)
-            .orElseThrow(() -> new NotFoundException("User not found"));
-
-        if(user.isActive()) {
-            throw new ConflictException("User is already active");
-        }
+        User user = userRepository.findOrThrow(targetId);
 
         if (!UserPermissions.canManage(caller, user)) {
             throw new ForbiddenException("Forbidden");
@@ -256,8 +242,7 @@ public class UserService {
     }
 
     public UserResponse getById(Long id) {
-        User user = userRepository.findById(id)
-            .orElseThrow(() -> new NotFoundException("User not found"));
+        User user = userRepository.findOrThrow(id);
         return toResponse(user);
     }
 }

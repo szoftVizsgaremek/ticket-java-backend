@@ -11,7 +11,6 @@ import com.example.ticketsystem.dto.request.UpdateTicketRequest;
 import com.example.ticketsystem.dto.response.TicketResponse;
 import com.example.ticketsystem.exception.BadRequestException;
 import com.example.ticketsystem.exception.ForbiddenException;
-import com.example.ticketsystem.exception.NotFoundException;
 import com.example.ticketsystem.model.Roles;
 import com.example.ticketsystem.model.Ticket;
 import com.example.ticketsystem.model.User;
@@ -105,9 +104,7 @@ public class TicketService {
 
     @Transactional 
     public TicketResponse update(Long targetId, UpdateTicketRequest req, User caller) {
-        Ticket ticket = ticketRepository.findById(targetId)
-            .orElseThrow(() -> new NotFoundException("Ticket not found"));
-        
+        Ticket ticket = ticketRepository.findOrThrow(targetId);
         User uploader = ticket.getUploader();
         User currentAssignee = ticket.getAssignee();
             
@@ -152,8 +149,7 @@ public class TicketService {
     }
 
     public TicketResponse getById(Long id) {
-        Ticket ticket = ticketRepository.findById(id)
-            .orElseThrow(() -> new NotFoundException("Ticket not found"));
+        Ticket ticket = ticketRepository.findOrThrow(id);
         return toResponse(ticket);
     }
 
