@@ -28,7 +28,7 @@ public class User {
     @Column(nullable = false)
     private LocalDate birthDate;
     @Column(nullable = false, length = 20)
-    private String role = "user";
+    private String role = Roles.USER;
     @Column(nullable = false, length = 100)
     private String jobTitle;
     @Column(nullable = false)

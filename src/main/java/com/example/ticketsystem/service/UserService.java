@@ -1,11 +1,8 @@
 package com.example.ticketsystem.service;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 
-import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,27 +16,27 @@ import com.example.ticketsystem.exception.ConflictException;
 import com.example.ticketsystem.exception.ForbiddenException;
 import com.example.ticketsystem.exception.NotFoundException;
 import com.example.ticketsystem.model.AuditAction;
+import com.example.ticketsystem.model.Roles;
 import com.example.ticketsystem.model.User;
+import com.example.ticketsystem.policy.PasswordPolicy;
+import com.example.ticketsystem.policy.UserPermissions;
 import com.example.ticketsystem.repository.UserRepository;
+import com.example.ticketsystem.util.TextRules;
 
 @Service 
 @Transactional (readOnly = true)
 public class UserService {
 
-    private static final String PASSWORD_PATTERN =
-        "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9]).{6,}$";
-
-    private static final Set<String> VALID_ROLES = Set.of("user", "admin", "superadmin");
-    private static final Set<String> ADMIN_OR_ABOVE = Set.of("admin", "superadmin");
-
     private final UserRepository userRepository;
     private final AuditService auditService;
     private final SessionStore sessionStore;
+    private final PasswordPolicy passwordPolicy;
 
-    public UserService(UserRepository userRepository, AuditService auditService, SessionStore sessionStore) {
+    public UserService(UserRepository userRepository, AuditService auditService, SessionStore sessionStore, PasswordPolicy passwordPolicy) {
         this.userRepository = userRepository;
         this.auditService = auditService;
         this.sessionStore = sessionStore;
+        this.passwordPolicy = passwordPolicy;
     }
 
     public UserResponse toResponse(User user) {
@@ -65,23 +62,15 @@ public class UserService {
         );
     }
 
-    private String requireText(String value, int max, String label) {
-        String trimmed = value.strip();
-        if (trimmed.isEmpty() || trimmed.length() > max) {
-            throw new BadRequestException(label + " must be 1-" + max + " characters");
-        }
-        return trimmed;
-    }
-
     private void applyProfile(User user, UpdateUserRequest req) {
         if (req.name() != null) {
-            user.setName(requireText(req.name(), 100, "Name"));
+            user.setName(TextRules.require(req.name(), 100, "Name"));
         }
         if (req.email() != null) {
-            user.setEmail(requireText(req.email(), 255, "Email"));
+            user.setEmail(TextRules.require(req.email(), 255, "Email"));
         }
         if (req.jobTitle() != null) {
-            user.setJobTitle(requireText(req.jobTitle(), 100, "Job title"));
+            user.setJobTitle(TextRules.require(req.jobTitle(), 100, "Job title"));
         }
         if (req.birthDate() != null) {
             user.setBirthDate(req.birthDate());
@@ -89,23 +78,11 @@ public class UserService {
     }
 
     private void applyPassword(User user, String newPassword) {
-        if (newPassword.matches(PASSWORD_PATTERN)) {
-            if(BCrypt.checkpw(newPassword, user.getHash())) {
-                throw new BadRequestException("New password can't match previous password");
-            }
-            String hash = BCrypt.hashpw(newPassword, BCrypt.gensalt(12));
-            user.setHash(hash);
-            user.setPasswordChangedAt(Instant.now());
-        } else {
-            throw new BadRequestException("Password doesn't fulfill requirements");
+        if (passwordPolicy.matches(newPassword, user.getHash())) {
+            throw new BadRequestException("New password can't match previous password");
         }
-    }
-
-    private String hashPassword(String raw) {
-        if (!raw.matches(PASSWORD_PATTERN) || raw.getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw new BadRequestException("Password doesn't fulfill requirements");
-        }         
-        return BCrypt.hashpw(raw, BCrypt.gensalt());
+        user.setHash(passwordPolicy.hash(newPassword));
+        user.setPasswordChangedAt(Instant.now());
     }
 
     @Transactional 
@@ -121,26 +98,24 @@ public class UserService {
             throw new BadRequestException("Missing required fields");
         }
 
-        boolean callerIsSuperAdmin = "superadmin".equals(caller.getRole());
-        String role = (req.role() == null) ? "user" : req.role();
+        boolean callerIsSuperAdmin = Roles.SUPERADMIN.equals(caller.getRole());
+        String role = (req.role() == null) ? Roles.USER : req.role();
 
-        if(!VALID_ROLES.contains(role)) {
+        if(!Roles.isValid(role)) {
             throw new BadRequestException("Invalid role");
         }
 
-        if(!callerIsSuperAdmin && !role.equals("user")) {
+        if(!callerIsSuperAdmin && !Roles.USER.equals(role)) {
             throw new ForbiddenException("Forbidden");
         }
 
-        User user = new User(
-            requireText(req.name(), 100, "Name"),
-            requireText(req.username(), 50, "Username"),
-            hashPassword(req.password()),
-            req.birthDate(),
-            role,
-            requireText(req.jobTitle(), 100, "Job title"),
-            requireText(req.email(), 255, "Email")
-        );
+        String name = TextRules.require(req.name(), 100, "Name");
+        String username = TextRules.require(req.username(), 50, "Username");
+        String jobtitle = TextRules.require(req.jobTitle(), 100, "Job title");
+        String email = TextRules.require(req.email(), 255, "Email");
+        String hash = passwordPolicy.hash(req.password());
+
+        User user = new User(name, username, hash, req.birthDate(), role, jobtitle, email);
 
         try {
             User saved = userRepository.save(user);
@@ -159,15 +134,13 @@ public class UserService {
         }
         String callerRole = caller.getRole();
         String targetRole = user.getRole();
-        boolean callerIsAdmin = "admin".equals(callerRole);
-        boolean callerIsSuperAdmin = "superadmin".equals(callerRole);
         boolean callerIsSelf = targetId.equals(caller.getId());
 
         AuditAction passwordReset = null;
         AuditAction passwordChanged = null;
         AuditAction roleChanged = null;
 
-        if(callerIsSuperAdmin) {
+        if(Roles.SUPERADMIN.equals(callerRole)) {
             
             applyProfile(user, req);
 
@@ -181,7 +154,7 @@ public class UserService {
                     
             }
             if (req.role() != null ) {
-                if (VALID_ROLES.contains(req.role())) {
+                if (Roles.isValid(req.role())) {
                     user.setRole(req.role());
                     roleChanged = AuditAction.ROLE_CHANGED;
                 } else {
@@ -204,7 +177,7 @@ public class UserService {
                 passwordChanged = AuditAction.PASSWORD_CHANGED; 
             }
             
-        } else if(callerIsAdmin && user.getRole().equals("user")) {
+        } else if(UserPermissions.canManage(caller, user)) {
             if (req.role() != null) {
                 throw new ForbiddenException("Forbidden");    
             }
@@ -248,17 +221,8 @@ public class UserService {
         if(!user.isActive()) {
             throw new NotFoundException("User not found");
         }
-        String callerRole = caller.getRole();
-        boolean callerIsAdmin = "admin".equals(callerRole);
-        boolean callerIsSelf = targetId.equals(caller.getId());
-        
-        if (!ADMIN_OR_ABOVE.contains(callerRole)) {
+        if (!UserPermissions.canManage(caller, user)) {
             throw new ForbiddenException("Forbidden");
-        }
-        if (callerIsAdmin) {
-            if (callerIsSelf || !user.getRole().equals("user")) {
-                throw new ForbiddenException("Forbidden");
-            } 
         }
         user.setActive(false);
         userRepository.save(user);
@@ -275,17 +239,8 @@ public class UserService {
             throw new ConflictException("User is already active");
         }
 
-        String callerRole = caller.getRole();
-        boolean callerIsAdmin = "admin".equals(callerRole);
-        boolean callerIsSelf = targetId.equals(caller.getId());
-
-        if (!ADMIN_OR_ABOVE.contains(callerRole)) {
+        if (!UserPermissions.canManage(caller, user)) {
             throw new ForbiddenException("Forbidden");
-        }
-        if (callerIsAdmin) {
-            if (callerIsSelf || !user.getRole().equals("user")) {
-                throw new ForbiddenException("Forbidden");
-            }
         }
 
         user.setActive(true);

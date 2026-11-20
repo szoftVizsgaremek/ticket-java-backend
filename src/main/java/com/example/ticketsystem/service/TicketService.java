@@ -12,10 +12,12 @@ import com.example.ticketsystem.dto.response.TicketResponse;
 import com.example.ticketsystem.exception.BadRequestException;
 import com.example.ticketsystem.exception.ForbiddenException;
 import com.example.ticketsystem.exception.NotFoundException;
+import com.example.ticketsystem.model.Roles;
 import com.example.ticketsystem.model.Ticket;
 import com.example.ticketsystem.model.User;
 import com.example.ticketsystem.repository.TicketRepository;
 import com.example.ticketsystem.repository.UserRepository;
+import com.example.ticketsystem.util.TextRules;
 
 
 
@@ -88,8 +90,8 @@ public class TicketService {
         User assignee = requireActiveAssignee(req.assigneeId());
 
         Ticket ticket = new Ticket(
-            req.name(),
-            req.description(),
+            TextRules.require(req.name(), 100, "Name"),
+            TextRules.require(req.description(), 250, "Description"),
             "open",
             priority,
             type,
@@ -112,11 +114,9 @@ public class TicketService {
         String callerJobTitle = caller.getJobTitle();
         String uploaderJobTitle = uploader.getJobTitle();
         String currentAssigneeJobTitle = currentAssignee.getJobTitle();
-        boolean callerIsSuperAdmin = "superadmin".equals(caller.getRole());
-
         boolean sameField = callerJobTitle.equals(uploaderJobTitle) 
                             || callerJobTitle.equals(currentAssigneeJobTitle);
-        if (!callerIsSuperAdmin && !sameField) {
+        if (!Roles.SUPERADMIN.equals(caller.getRole()) && !sameField) {
             throw new ForbiddenException("Forbidden");
         }
     
